@@ -24,4 +24,9 @@ export const getNotifications = (candidateId) => axios.get(`${API_URL}/notificat
 export const markNotificationRead = (notifId) => axios.put(`${API_URL}/notifications/${notifId}/read`);
 export const getAuditLogs = (limit = 50) => axios.get(`${API_URL}/audit-logs/?limit=${limit}`);
 export const getMetrics = () => axios.get(`${API_URL}/metrics/`);
+export const approveCandidate = (id) => axios.post(`${API_URL}/candidates/${id}/approve`);
 export const reseedFaq = () => axios.post(`${API_URL}/admin/reseed-faq`);
+
+// Payroll
+export const submitBankDetails = (id, data) => axios.post(`${API_URL}/candidates/${id}/bank-details`, data);
+export const getPayslipDownloadUrl = (id) => `${API_URL}/candidates/${id}/payslip`;

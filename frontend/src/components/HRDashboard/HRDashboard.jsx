@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCandidates, getMetrics, getAuditLogs } from '../../api';
+import { getCandidates, getMetrics, getAuditLogs, approveCandidate } from '../../api';
 
 function HRDashboard() {
     const [candidates, setCandidates] = useState([]);
@@ -7,6 +7,7 @@ function HRDashboard() {
     const [auditLogs, setAuditLogs] = useState([]);
     const [activeTab, setActiveTab] = useState('pipeline');
     const [loading, setLoading] = useState(true);
+    const [approvingId, setApprovingId] = useState(null);
 
     useEffect(() => {
         loadAll();
@@ -29,6 +30,17 @@ function HRDashboard() {
         setLoading(false);
     };
 
+    const handleApprove = async (candidateId) => {
+        setApprovingId(candidateId);
+        try {
+            await approveCandidate(candidateId);
+            await loadAll();
+        } catch (e) {
+            alert("Failed to approve candidate. Check terminal logs for details.");
+        }
+        setApprovingId(null);
+    };
+
     if (loading) {
         return (
             <div className="loading-screen">
@@ -46,6 +58,7 @@ function HRDashboard() {
         const s = status.toLowerCase();
         if (s === 'ready' || s === 'completed') return 'verified';
         if (s === 'flagged' || s === 'rejected') return 'flagged';
+        if (s === 'pending_hr_approval') return 'info';
         if (s === 'intake' || s === 'doc_collection') return 'intake';
         return 'pending';
     };
@@ -166,6 +179,7 @@ function HRDashboard() {
                                         <th>BGV</th>
                                         <th>IT</th>
                                         <th>Exceptions</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -217,6 +231,20 @@ function HRDashboard() {
                                                     <span className="badge flagged">🚨 Review</span>
                                                 ) : (
                                                     <span className="badge verified">Clear</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                {c.status === 'pending_hr_approval' ? (
+                                                    <button
+                                                        className="btn-primary"
+                                                        type="button"
+                                                        disabled={approvingId === c.id}
+                                                        onClick={() => handleApprove(c.id)}
+                                                    >
+                                                        {approvingId === c.id ? '⏳ Approving...' : '✅ Approve'}
+                                                    </button>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)' }}>—</span>
                                                 )}
                                             </td>
                                         </tr>

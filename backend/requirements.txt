@@ -9,3 +9,4 @@ google-genai
 pytesseract
 pillow
 python-dotenv
+reportlab

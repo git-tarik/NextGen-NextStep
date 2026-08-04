@@ -85,19 +85,21 @@ def bgv_agent(state: AgentState) -> Dict[str, Any]:
     }
 
 def hr_setup_agent(state: AgentState) -> Dict[str, Any]:
-    """HR Setup Agent: Creates employee record."""
+    """HR Setup Agent: Creates employee record, then halts pending candidate bank details for payroll."""
     print("--- HR SETUP AGENT ---")
     prov_status = state.get("provisioning_status", {})
     prov_status["hr"] = "completed"
     events = state.get("timeline_events", [])
     notifications = state.get("notifications", [])
-    
+
     # HR setup adds 15 points
     score = state.get("readiness_score", 51) + 15
     events.append(_make_event("HR Setup", "HR Setup Agent", "Employee record created in HRIS"))
     notifications.append({"title": "HR Record Created", "message": "Your employee record has been set up.", "type": "success"})
-    
+    notifications.append({"title": "Bank Details Needed", "message": "Please submit your bank account, bank name, and PAN details to complete payroll setup.", "type": "warning"})
+
     return {
+        "current_step": "payroll_setup",
         "provisioning_status": prov_status,
         "readiness_score": score,
         "timeline_events": events,
@@ -105,21 +107,36 @@ def hr_setup_agent(state: AgentState) -> Dict[str, Any]:
     }
 
 def payroll_setup_agent(state: AgentState) -> Dict[str, Any]:
-    """Payroll Setup Agent: Sets up payroll."""
+    """Payroll Setup Agent: Consumes candidate-submitted bank details, sets a fixed Rs. 9,00,000/yr CTC,
+    and generates a downloadable payslip PDF."""
     print("--- PAYROLL SETUP AGENT ---")
+    from ..services.payslip_generator import compute_salary_breakdown, generate_payslip_pdf
+
     prov_status = state.get("provisioning_status", {})
     prov_status["payroll"] = "completed"
     events = state.get("timeline_events", [])
     notifications = state.get("notifications", [])
-    
+
+    bank_details = state.get("bank_details", {}) or {}
+    salary_breakdown = compute_salary_breakdown()
+    pdf_path = generate_payslip_pdf(
+        candidate_id=state.get("candidate_id"),
+        candidate_name=state.get("candidate_name", ""),
+        role=state.get("candidate_role", ""),
+        bank_details=bank_details,
+        salary_breakdown=salary_breakdown,
+    )
+
     # Payroll adds 12 points
     score = state.get("readiness_score", 66) + 12
-    events.append(_make_event("Payroll Setup", "Payroll Agent", "Payroll account configured"))
-    notifications.append({"title": "Payroll Ready", "message": "Your payroll has been configured.", "type": "success"})
-    
+    events.append(_make_event("Payroll Setup", "Payroll Agent", "Bank details received — payroll configured at Rs. 9,00,000/yr and payslip generated"))
+    notifications.append({"title": "Payroll Ready", "message": "Your payroll has been configured. Download your payslip from the portal.", "type": "success"})
+
     return {
         "provisioning_status": prov_status,
         "readiness_score": score,
+        "salary_breakdown": salary_breakdown,
+        "payslip_pdf_path": pdf_path,
         "timeline_events": events,
         "notifications": notifications
     }

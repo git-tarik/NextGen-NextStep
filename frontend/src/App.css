@@ -274,7 +274,7 @@ select option {
 }
 
 /* ===== BUTTONS ===== */
-button {
+button, a.btn-primary, a.btn-secondary, a.btn-ghost {
   font-family: inherit;
   font-size: 0.9rem;
   font-weight: 600;
@@ -288,20 +288,22 @@ button {
   justify-content: center;
   gap: 0.5rem;
   white-space: nowrap;
+  text-decoration: none;
 }
 
-button.btn-primary, button[type="submit"] {
+button.btn-primary, button[type="submit"], a.btn-primary {
   background: var(--gradient-brand);
   color: white;
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
-button.btn-primary:hover, button[type="submit"]:hover {
+button.btn-primary:hover, button[type="submit"]:hover, a.btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+  color: white;
 }
 
-button.btn-primary:active, button[type="submit"]:active {
+button.btn-primary:active, button[type="submit"]:active, a.btn-primary:active {
   transform: translateY(0);
 }
 

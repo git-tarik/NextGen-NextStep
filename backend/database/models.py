@@ -22,6 +22,10 @@ class Candidate(Base):
     it_status = Column(String, default="pending")
     hr_status = Column(String, default="pending")
     compliance_status = Column(String, default="pending")
+    bank_account_number = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
+    pan_number = Column(String, nullable=True)
+    payslip_pdf_path = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     documents = relationship("Document", back_populates="candidate")

@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from .database import database, models
-from .agents.graph import onboarding_graph
+from .agents.graph import onboarding_graph, post_approval_graph, payroll_graph
 from .agents.query_assistant import query_assistant_agent
 from .services.vector_store import seed_database
 from pydantic import BaseModel
@@ -21,8 +23,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create tables
-models.Base.metadata.create_all(bind=database.engine)
+# Create tables (and migrate existing sqlite db with any newly added columns)
+database.init_db()
 
 # Ensure upload directory exists
 os.makedirs("backend/uploads", exist_ok=True)
@@ -44,6 +46,11 @@ class CandidateCreate(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
+
+class BankDetails(BaseModel):
+    account_number: str
+    bank_name: str
+    pan_number: str
 
 # --- Utility: Audit Logging ---
 
@@ -145,8 +152,9 @@ def create_candidate(candidate_data: CandidateCreate, db: Session = Depends(data
     # Create notifications from agent
     for notif in result_state.get("notifications", []):
         create_notification(db, db_candidate.id, notif.get("title", "Update"), notif.get("message", ""), notif.get("type", "info"))
-    
-    return db_candidate
+
+    db.refresh(db_candidate)
+    return jsonable_encoder(db_candidate)
 
 @app.get("/candidates/by-email/{email}")
 def get_candidate_by_email(email: str, db: Session = Depends(database.get_db)):
@@ -285,6 +293,153 @@ def upload_document(
     
     return {"message": "Document uploaded and processed", "new_state": result_state}
 
+# --- HR Approval API ---
+
+@app.post("/candidates/{candidate_id}/approve")
+def approve_candidate(candidate_id: int, db: Session = Depends(database.get_db)):
+    """HR approves a candidate whose documents have been reviewed, resuming the pipeline (BGV -> HR -> Payroll -> IT)."""
+    candidate = db.query(models.Candidate).filter(models.Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if candidate.status != "pending_hr_approval":
+        raise HTTPException(status_code=400, detail="Candidate is not awaiting HR approval")
+
+    current_state = {
+        "candidate_id": candidate_id,
+        "current_step": candidate.status,
+        "documents": [],
+        "missing_documents": [],
+        "verification_flags": [],
+        "bgv_status": candidate.bgv_status or "pending",
+        "provisioning_status": {
+            "hr": candidate.hr_status or "pending",
+            "payroll": candidate.payroll_status or "pending",
+            "it": candidate.it_status or "pending"
+        },
+        "readiness_score": candidate.day_1_readiness_score,
+        "requires_hr_review": False,
+        "timeline_events": [],
+        "notifications": [],
+        "compliance_checks": []
+    }
+
+    result_state = post_approval_graph.invoke(current_state)
+
+    old_status = candidate.status
+    candidate.status = result_state.get("current_step", candidate.status)
+    candidate.day_1_readiness_score = result_state.get("readiness_score", candidate.day_1_readiness_score)
+    candidate.bgv_status = result_state.get("bgv_status", candidate.bgv_status)
+
+    prov = result_state.get("provisioning_status", {})
+    if prov.get("hr"):
+        candidate.hr_status = prov["hr"]
+    if prov.get("payroll"):
+        candidate.payroll_status = prov["payroll"]
+    if prov.get("it"):
+        candidate.it_status = prov["it"]
+
+    candidate.compliance_status = "complete" if candidate.day_1_readiness_score >= 100 else "in_progress"
+
+    db.commit()
+
+    log_status_change(db, candidate_id, old_status, candidate.status, "HR approved onboarding", "HR Approval")
+    log_audit(db, "Candidate", candidate_id, "HR_APPROVED", f"HR approved candidate. New score: {candidate.day_1_readiness_score}", "HR Approval")
+
+    for notif in result_state.get("notifications", []):
+        create_notification(db, candidate_id, notif.get("title", "Update"), notif.get("message", ""), notif.get("type", "info"))
+
+    return {"message": "Candidate approved", "new_state": result_state}
+
+# --- Payroll API ---
+
+@app.post("/candidates/{candidate_id}/bank-details")
+def submit_bank_details(candidate_id: int, details: BankDetails, db: Session = Depends(database.get_db)):
+    """Candidate submits bank account & PAN details, resuming the pipeline (Payroll -> IT -> Readiness) and generating a payslip PDF."""
+    candidate = db.query(models.Candidate).filter(models.Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if candidate.status != "payroll_setup":
+        raise HTTPException(status_code=400, detail="Candidate is not awaiting payroll bank details")
+
+    candidate.bank_account_number = details.account_number
+    candidate.bank_name = details.bank_name
+    candidate.pan_number = details.pan_number
+    db.commit()
+
+    current_state = {
+        "candidate_id": candidate_id,
+        "current_step": candidate.status,
+        "candidate_name": candidate.name,
+        "candidate_role": candidate.role,
+        "documents": [],
+        "missing_documents": [],
+        "verification_flags": [],
+        "bgv_status": candidate.bgv_status or "pending",
+        "provisioning_status": {
+            "hr": candidate.hr_status or "pending",
+            "payroll": candidate.payroll_status or "pending",
+            "it": candidate.it_status or "pending"
+        },
+        "readiness_score": candidate.day_1_readiness_score,
+        "requires_hr_review": False,
+        "bank_details": {
+            "account_number": details.account_number,
+            "bank_name": details.bank_name,
+            "pan_number": details.pan_number
+        },
+        "timeline_events": [],
+        "notifications": [],
+        "compliance_checks": []
+    }
+
+    result_state = payroll_graph.invoke(current_state)
+
+    old_status = candidate.status
+    candidate.status = result_state.get("current_step", candidate.status)
+    candidate.day_1_readiness_score = result_state.get("readiness_score", candidate.day_1_readiness_score)
+
+    prov = result_state.get("provisioning_status", {})
+    if prov.get("hr"):
+        candidate.hr_status = prov["hr"]
+    if prov.get("payroll"):
+        candidate.payroll_status = prov["payroll"]
+    if prov.get("it"):
+        candidate.it_status = prov["it"]
+
+    if result_state.get("payslip_pdf_path"):
+        candidate.payslip_pdf_path = result_state["payslip_pdf_path"]
+
+    candidate.compliance_status = "complete" if candidate.day_1_readiness_score >= 100 else "in_progress"
+
+    db.commit()
+
+    log_status_change(db, candidate_id, old_status, candidate.status, "Candidate submitted bank details; payroll finalized", "Payroll Agent")
+    log_audit(db, "Candidate", candidate_id, "BANK_DETAILS_SUBMITTED", f"Bank details submitted and payslip generated for candidate {candidate_id}", "Payroll Agent")
+
+    for notif in result_state.get("notifications", []):
+        create_notification(db, candidate_id, notif.get("title", "Update"), notif.get("message", ""), notif.get("type", "info"))
+
+    return {"message": "Bank details submitted and payroll finalized", "new_state": result_state}
+
+@app.get("/candidates/{candidate_id}/payslip")
+def download_payslip(candidate_id: int, db: Session = Depends(database.get_db)):
+    """Download the generated payslip PDF for a candidate."""
+    candidate = db.query(models.Candidate).filter(models.Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if not candidate.payslip_pdf_path or not os.path.exists(candidate.payslip_pdf_path):
+        raise HTTPException(status_code=404, detail="Payslip not yet generated")
+
+    safe_name = candidate.name.replace(" ", "_") if candidate.name else str(candidate_id)
+    return FileResponse(
+        candidate.payslip_pdf_path,
+        media_type="application/pdf",
+        filename=f"payslip_{safe_name}.pdf"
+    )
+
 # --- Timeline API ---
 
 @app.get("/candidates/{candidate_id}/timeline")
@@ -404,7 +559,7 @@ def get_metrics(db: Session = Depends(database.get_db)):
     
     # Document metrics
     all_docs = db.query(models.Document).all()
-    docs_verified = len([d for d in all_docs if d.status and d.status.lower() == "verified"])
+    docs_verified = len([d for d in all_docs if d.status and d.status.lower() not in ("uploaded", "flagged", "rejected")])
     docs_flagged = len([d for d in all_docs if d.status and d.status.lower() in ("flagged", "rejected")])
     
     # Provisioning metrics

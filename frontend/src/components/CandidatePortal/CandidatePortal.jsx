@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createCandidate, uploadDocument, chatWithAssistant, getCandidateByEmail, getCandidateTimeline, getNotifications } from '../../api';
+import { createCandidate, uploadDocument, chatWithAssistant, getCandidateByEmail, getCandidateTimeline, getNotifications, submitBankDetails, getPayslipDownloadUrl } from '../../api';
 
 // Readiness Gauge Component
 function ReadinessGauge({ score }) {
@@ -51,7 +51,7 @@ function TimelineStep({ step, status, detail, isLast }) {
 const ONBOARDING_STAGES = [
     { key: 'intake', label: 'Intake', icon: '📋' },
     { key: 'doc_collection', label: 'Document Collection', icon: '📁' },
-    { key: 'doc_verification', label: 'Document Verification', icon: '🔍' },
+    { key: 'pending_hr_approval', label: 'HR Approval', icon: '✅' },
     { key: 'bgv_coordination', label: 'Background Verification', icon: '🛡️' },
     { key: 'hr_setup', label: 'HR Record Setup', icon: '👤' },
     { key: 'payroll_setup', label: 'Payroll Setup', icon: '💰' },
@@ -74,7 +74,12 @@ function CandidatePortal({ loggedInEmail }) {
     
     // Notifications
     const [notifications, setNotifications] = useState([]);
-    
+
+    // Payroll / bank details
+    const [bankForm, setBankForm] = useState({ accountNumber: '', bankName: '', panNumber: '' });
+    const [submittingBank, setSubmittingBank] = useState(false);
+    const [bankError, setBankError] = useState('');
+
     // Chat state
     const [query, setQuery] = useState("");
     const [chatLog, setChatLog] = useState([
@@ -177,6 +182,25 @@ function CandidatePortal({ loggedInEmail }) {
             alert("Failed to upload document. Check terminal logs for details.");
         }
         setUploading(false);
+    };
+
+    const handleBankDetailsSubmit = async (e) => {
+        e.preventDefault();
+        if (!candidateId) return;
+        setBankError('');
+        setSubmittingBank(true);
+        try {
+            await submitBankDetails(candidateId, {
+                account_number: bankForm.accountNumber,
+                bank_name: bankForm.bankName,
+                pan_number: bankForm.panNumber
+            });
+            setBankForm({ accountNumber: '', bankName: '', panNumber: '' });
+            await checkExistingCandidate();
+        } catch (error) {
+            setBankError('Failed to submit bank details. Please check the values and try again.');
+        }
+        setSubmittingBank(false);
     };
 
     const handleFileSelect = (selectedFile) => {
@@ -310,14 +334,18 @@ function CandidatePortal({ loggedInEmail }) {
                                     let status = 'pending';
                                     if (i < stageIndex) status = 'completed';
                                     else if (i === stageIndex) status = candidate?.requires_hr_review ? 'flagged' : 'active';
-                                    
+
+                                    // Background verification is mocked (no real BGV vendor integration yet)
+                                    const isMockBgv = stage.key === 'bgv_coordination' && (status === 'completed' || status === 'active');
+
                                     return (
-                                        <TimelineStep 
+                                        <TimelineStep
                                             key={stage.key}
                                             step={`${stage.icon} ${stage.label}`}
                                             status={status}
                                             detail={
-                                                status === 'completed' ? 'Completed' : 
+                                                isMockBgv ? 'Mock Review in Process' :
+                                                status === 'completed' ? 'Completed' :
                                                 status === 'active' ? 'In Progress' :
                                                 status === 'flagged' ? 'Needs Review' : 'Pending'
                                             }
@@ -340,7 +368,7 @@ function CandidatePortal({ loggedInEmail }) {
                                     const doc = documents.find(d => d.document_type === req);
                                     const isUploaded = !!doc;
                                     const isFlagged = doc?.status?.toLowerCase() === 'flagged';
-                                    const isVerified = doc?.status?.toLowerCase() === 'verified';
+                                    const isVerified = isUploaded && !isFlagged && doc?.status?.toLowerCase() !== 'uploaded';
                                     
                                     return (
                                         <div key={req} className={`doc-card ${isVerified ? 'uploaded' : isFlagged ? 'flagged' : isUploaded ? 'uploaded' : 'missing'}`}>
@@ -357,6 +385,20 @@ function CandidatePortal({ loggedInEmail }) {
                                     );
                                 })}
                             </div>
+
+                            {candidate?.status === 'pending_hr_approval' && (
+                                <div style={{
+                                    background: 'var(--accent-primary-bg, rgba(99, 102, 241, 0.1))',
+                                    border: '1px solid var(--accent-primary-border, rgba(99, 102, 241, 0.3))',
+                                    borderRadius: 'var(--radius-sm)',
+                                    padding: '0.75rem 1rem',
+                                    marginBottom: '1rem',
+                                    fontSize: '0.8rem',
+                                    color: 'var(--text-secondary)'
+                                }}>
+                                    ✅ All documents reviewed. Awaiting HR approval to continue onboarding.
+                                </div>
+                            )}
 
                             {missingDocs.length > 0 && (
                                 <div style={{ 
@@ -420,6 +462,84 @@ function CandidatePortal({ loggedInEmail }) {
                                 </div>
                             </form>
                         </div>
+
+                        {/* Payroll Setup */}
+                        {(candidate?.status === 'payroll_setup' || candidate?.payslip_pdf_path) && (
+                            <div className="card">
+                                <h3>💰 Payroll Setup</h3>
+
+                                {candidate?.payslip_pdf_path ? (
+                                    <div>
+                                        <div style={{
+                                            background: 'var(--accent-success-bg)',
+                                            border: '1px solid var(--accent-success-border)',
+                                            borderRadius: 'var(--radius-sm)',
+                                            padding: '0.75rem 1rem',
+                                            marginBottom: '1rem',
+                                            fontSize: '0.8rem',
+                                            color: 'var(--text-secondary)'
+                                        }}>
+                                            ✅ Payroll configured — Annual CTC ₹9,00,000. Your payslip with the full salary breakdown and bank details is ready.
+                                        </div>
+                                        <a
+                                            className="btn-primary"
+                                            style={{ display: 'inline-block', textDecoration: 'none', textAlign: 'center' }}
+                                            href={getPayslipDownloadUrl(candidateId)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            download
+                                        >
+                                            ⬇️ Download Payslip (PDF)
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                                            Your HR record has been set up. To finalize payroll at an annual CTC of ₹9,00,000, please submit your bank details below.
+                                        </p>
+                                        <form onSubmit={handleBankDetailsSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                            <div className="form-group">
+                                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Bank Name</label>
+                                                <input
+                                                    value={bankForm.bankName}
+                                                    onChange={e => setBankForm({ ...bankForm, bankName: e.target.value })}
+                                                    placeholder="e.g. HDFC Bank"
+                                                    required
+                                                    id="bank-name-input"
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Account Number</label>
+                                                <input
+                                                    value={bankForm.accountNumber}
+                                                    onChange={e => setBankForm({ ...bankForm, accountNumber: e.target.value })}
+                                                    placeholder="Bank account number"
+                                                    required
+                                                    id="bank-account-input"
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>PAN Number</label>
+                                                <input
+                                                    value={bankForm.panNumber}
+                                                    onChange={e => setBankForm({ ...bankForm, panNumber: e.target.value.toUpperCase() })}
+                                                    placeholder="ABCDE1234F"
+                                                    maxLength={10}
+                                                    required
+                                                    id="pan-number-input"
+                                                />
+                                            </div>
+                                            {bankError && (
+                                                <div style={{ color: 'var(--accent-danger, #ef4444)', fontSize: '0.8rem' }}>{bankError}</div>
+                                            )}
+                                            <button type="submit" className="btn-primary" disabled={submittingBank}>
+                                                {submittingBank ? '⏳ Submitting...' : '💾 Submit & Generate Payslip'}
+                                            </button>
+                                        </form>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Notifications */}
                         {notifications.length > 0 && (
