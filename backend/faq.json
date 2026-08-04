@@ -1,0 +1,62 @@
+[
+    {
+        "question": "What documents do I need for background verification?",
+        "answer": "You need to provide your government-issued ID, your most recent educational degree certificate, and the signed offer letter."
+    },
+    {
+        "question": "How long does the background verification take?",
+        "answer": "Background verification typically takes 3 to 5 business days after you have successfully uploaded all required documents."
+    },
+    {
+        "question": "When will I receive my IT equipment?",
+        "answer": "Your IT equipment (laptop and accessories) will be shipped to your address on file and should arrive 1-2 days before your Day-1 start date, provided all onboarding steps are complete."
+    },
+    {
+        "question": "How do I access the HR portal?",
+        "answer": "You will receive an email with your initial login credentials for the HR portal once your background verification is cleared and your employee record is created."
+    },
+    {
+        "question": "Who can I contact if I have an issue with my documents?",
+        "answer": "If you encounter any issues uploading or verifying your documents, please reach out to onboarding-support@company.com."
+    },
+    {
+        "question": "What is the onboarding process?",
+        "answer": "The onboarding process involves six key steps: 1) Document collection and upload, 2) AI-powered document verification, 3) Background verification (BGV), 4) HR record creation, 5) Payroll setup, and 6) IT provisioning including laptop and access credentials."
+    },
+    {
+        "question": "What is the Day-1 readiness score?",
+        "answer": "The Day-1 readiness score is a percentage (0-100%) indicating how prepared you are for your first day. It considers document submission, verification status, background check clearance, HR setup, payroll configuration, and IT provisioning. A score of 100% means you are fully ready."
+    },
+    {
+        "question": "Can I upload documents in PDF format?",
+        "answer": "Yes, you can upload documents in common image formats (JPEG, PNG) and PDF format. Our AI system will process and verify them automatically."
+    },
+    {
+        "question": "What happens if my document is flagged?",
+        "answer": "If a document is flagged by our AI verification system, it means additional review is needed. An HR team member will be notified and will review the document manually. You may be asked to re-upload a clearer copy."
+    },
+    {
+        "question": "How do I check my onboarding status?",
+        "answer": "You can check your onboarding status at any time by logging into the Candidate Portal. Your dashboard shows your Day-1 readiness score, document status, and a detailed timeline of all completed and pending steps."
+    },
+    {
+        "question": "What should I do on my first day?",
+        "answer": "On your first day, report to the reception at 9:00 AM. You'll receive your employee badge, meet your team, attend orientation sessions, and set up your workstation. Make sure all onboarding steps show as complete before Day 1."
+    },
+    {
+        "question": "How do I set up direct deposit for payroll?",
+        "answer": "Direct deposit will be set up as part of the payroll provisioning step. You'll need to provide your bank account details (routing number and account number) during the HR setup process."
+    },
+    {
+        "question": "What benefits am I eligible for?",
+        "answer": "New employees are eligible for health insurance, dental and vision coverage, 401(k) retirement plan, paid time off, and professional development allowances. Benefits enrollment opens on your start date. Contact hr-benefits@company.com for details."
+    },
+    {
+        "question": "Can I change my start date?",
+        "answer": "Start date changes must be requested at least 5 business days in advance. Please contact your recruiter or email onboarding-support@company.com to request a change. Note that this may affect your onboarding timeline."
+    },
+    {
+        "question": "What software and tools will I get access to?",
+        "answer": "IT provisioning includes access to email, Slack, project management tools, cloud development environments, and role-specific software. Your manager will be consulted on any additional tool requirements."
+    }
+]
