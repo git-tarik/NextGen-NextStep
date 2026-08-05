@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createCandidate, uploadDocument, chatWithAssistant, getCandidateByEmail, getCandidateTimeline, getNotifications, submitBankDetails, getPayslipDownloadUrl } from '../../api';
+import { createCandidate, uploadDocument, getCandidateByEmail, getCandidateTimeline, getNotifications, submitBankDetails, getPayslipDownloadUrl } from '../../api';
+import AIChatPopup from '../AIChatPopup';
 
 // Readiness Gauge Component
 function ReadinessGauge({ score }) {
@@ -80,22 +81,8 @@ function CandidatePortal({ loggedInEmail }) {
     const [submittingBank, setSubmittingBank] = useState(false);
     const [bankError, setBankError] = useState('');
 
-    // Chat state
-    const [query, setQuery] = useState("");
-    const [chatLog, setChatLog] = useState([
-        { sender: 'bot', text: 'Hi! 👋 I\'m your AI onboarding assistant. Ask me anything about your onboarding journey!' }
-    ]);
-    const [chatLoading, setChatLoading] = useState(false);
     const [loading, setLoading] = useState(true);
-    const chatEndRef = useRef(null);
     const fileInputRef = useRef(null);
-
-    const suggestedQuestions = [
-        "What documents do I need?",
-        "How long does BGV take?",
-        "What is Day-1 readiness?",
-        "When do I get IT equipment?",
-    ];
 
     useEffect(() => {
         if (loggedInEmail) {
@@ -104,10 +91,6 @@ function CandidatePortal({ loggedInEmail }) {
             setLoading(false);
         }
     }, [loggedInEmail]);
-
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chatLog, chatLoading]);
 
     const checkExistingCandidate = async () => {
         try {
@@ -215,39 +198,7 @@ function CandidatePortal({ loggedInEmail }) {
         if (droppedFile) handleFileSelect(droppedFile);
     };
 
-    const handleChat = async (e) => {
-        e?.preventDefault();
-        const q = typeof e === 'string' ? e : query;
-        if (!q.trim()) return;
-        
-        const newLog = [...chatLog, { sender: 'user', text: q }];
-        setChatLog(newLog);
-        setQuery("");
-        setChatLoading(true);
-        
-        try {
-            const res = await chatWithAssistant(q);
-            setChatLog([...newLog, { sender: 'bot', text: res.data.response }]);
-        } catch (err) {
-            setChatLog([...newLog, { sender: 'bot', text: 'Sorry, I had trouble connecting. Please try again.' }]);
-        }
-        setChatLoading(false);
-    };
 
-    const handleSuggestedQuestion = (q) => {
-        setQuery(q);
-        const fakeEvent = { preventDefault: () => {} };
-        setChatLog(prev => [...prev, { sender: 'user', text: q }]);
-        setChatLoading(true);
-        
-        chatWithAssistant(q).then(res => {
-            setChatLog(prev => [...prev, { sender: 'bot', text: res.data.response }]);
-            setChatLoading(false);
-        }).catch(() => {
-            setChatLog(prev => [...prev, { sender: 'bot', text: 'Sorry, I had trouble connecting.' }]);
-            setChatLoading(false);
-        });
-    };
 
     if (loading) {
         return (
@@ -562,51 +513,10 @@ function CandidatePortal({ loggedInEmail }) {
                         )}
                     </div>
 
-                    {/* Chat Assistant - Full Width */}
-                    <div className="card full-width">
-                        <h3>💬 AI Onboarding Assistant</h3>
-                        
-                        <div className="suggested-questions">
-                            {suggestedQuestions.map((q, i) => (
-                                <button 
-                                    key={i} 
-                                    className="suggested-q"
-                                    onClick={() => handleSuggestedQuestion(q)}
-                                    type="button"
-                                >
-                                    {q}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="chat-window">
-                            {chatLog.map((msg, i) => (
-                                <div key={i} className={`message ${msg.sender}`}>
-                                    {msg.text}
-                                </div>
-                            ))}
-                            {chatLoading && (
-                                <div className="typing-indicator">
-                                    <span></span><span></span><span></span>
-                                </div>
-                            )}
-                            <div ref={chatEndRef} />
-                        </div>
-                        <form className="chat-input" onSubmit={handleChat}>
-                            <input 
-                                value={query} 
-                                onChange={e => setQuery(e.target.value)} 
-                                placeholder="Ask about your onboarding process..." 
-                                disabled={chatLoading}
-                                id="chat-input"
-                            />
-                            <button type="submit" className="btn-primary" disabled={chatLoading || !query.trim()}>
-                                Send
-                            </button>
-                        </form>
-                    </div>
                 </div>
             )}
+            {/* Floating AI Assistant Popup */}
+            <AIChatPopup />
         </div>
     );
 }
