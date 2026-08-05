@@ -333,6 +333,122 @@ erDiagram
 
 ---
 
+## 📋 Requirements Fulfillment Analysis & Agent Architecture
+
+This section maps the current implementation of the **NextGen NextStep** project against the initial business requirements for the AI-powered onboarding control tower.
+
+### 1. Current State Assessment
+**Requirement:** Describe End-to-end onboarding journey, key stakeholders involved, and current challenges.
+**Implementation Status:** **Fulfilled (Conceptually addressed by the platform's design)**
+- **End-to-end journey:** The project models the entire journey from offer acceptance (Intake), document collection, background verification (BGV), HR provisioning, payroll setup, to IT provisioning.
+- **Stakeholders:** The system explicitly designs interfaces and checkpoints for Candidates (Candidate Portal) and HR/Admins (HR Command Center).
+- **Current Challenges:** The documentation highlights fragmented processes, manual document verification delays, lack of candidate visibility, and audit gaps, which the platform directly mitigates.
+
+### 2. Problem Analysis
+**Requirement:** Identify issues across Document collection, Background verification, HR record creation, Payroll setup, IT provisioning, Candidate communication, and Compliance tracking.
+**Implementation Status:** **Fulfilled**
+- The system addresses these exact areas by assigning specialized AI agents to each domain (e.g., `Document Collection Agent`, `HR Setup Agent`, `IT Provisioning Agent`) ensuring no manual handoffs are missed.
+- Compliance tracking is implemented via the `Audit & Status Logger` and `STATUS_HISTORY` / `AUDIT_LOG` database tables.
+
+### 3. Top 3 Prioritized Problems
+**Requirement:** Select and justify the most impactful onboarding challenges.
+**Implementation Status:** **Fulfilled (System Focus)**
+The implementation prioritizes:
+1. **Manual Document Verification:** Addressed by the `Document Verification Agent` replacing manual OCR and authenticity checks.
+2. **Siloed Departmental Coordination:** Addressed by the LangGraph orchestrator connecting HR, Payroll, and IT sequentially.
+3. **Lack of Candidate Visibility:** Addressed by the Candidate Portal featuring a Day-1 Readiness Score and a RAG-based Query Assistant for 24/7 communication.
+
+### 4. AI Solution Design
+**Requirement:** Design relevant AI agents (Intake, Collection, Verification, BGV, HR, Payroll, IT, Query Assistant).
+**Implementation Status:** **Fully Implemented**
+The backend `agents/nodes.py` and `agents/graph.py` currently implement all requested agents:
+- 📋 **Onboarding Intake Agent**
+- 📁 **Document Collection Agent**
+- 🔍 **Document Verification Agent**
+- 🛡️ **BGV Coordination Agent**
+- 👤 **HR Setup Agent**
+- 💰 **Payroll Setup Agent**
+- 💻 **IT Provisioning Agent**
+- 🤖 **Query Assistant Agent** (Using ChromaDB and Gemini 3.5 Flash)
+
+### 5. High-Level Architecture Presentation
+**Requirement:** Include Candidate portal/chatbot, HR dashboard, AI orchestration layer, Document processing, HRIS integration, ITSM integration, Notification services, Audit logging.
+**Implementation Status:** **Fully Implemented**
+- **Candidate Portal & Chatbot:** Built with React/Vite, integrating the Gemini Chat widget.
+- **HR Dashboard:** React UI for pipeline metrics and exception routing.
+- **AI Orchestration:** Powered by LangGraph across 3 distinct phases.
+- **Document Processing:** Handled via Python (ReportLab, PyPDF2) and AI confidence scoring.
+- **Integrations & Services:** Simulated HRIS/ITSM steps in agent nodes, Audit Logging stored in SQLite.
+
+### 6. Prototype
+**Requirement:** Demonstrate Candidate onboarding dashboard, Document upload, Missing document detection, Status tracking, FAQ support, Day-1 readiness score, Exception routing.
+**Implementation Status:** **Fully Implemented**
+All features are visible in the frontend codebase (`CandidatePortal`, `HRDashboard`, `AIChatPopup`) and backed by the FastAPI engine.
+
+### 7. Success Metrics
+**Requirement:** Day-1 readiness rate, Reduced onboarding cycle time, Reduced HR follow-up effort, Improved candidate experience, Faster provisioning and verification.
+**Implementation Status:** **Fully Implemented**
+The platform features a `Readiness Scorer` agent that computes the Day-1 Readiness Score (0-100%). System metrics are exposed via the `GET /metrics/` endpoint for the HR Dashboard.
+
+---
+
+## 🤖 AI Agents Workflow Architecture
+
+The following architecture demonstrates the end-to-end orchestration of the AI agents across the three major phases of onboarding.
+
+```mermaid
+stateDiagram-v2
+    direction TB
+    
+    [*] --> Intake
+    
+    state "Phase 1: Pre-Approval (Document Processing)" as Phase1 {
+        Intake: 📋 Onboarding Intake Agent\n(Sets Requirements & Initial Score)
+        DocCollection: 📁 Document Collection Agent\n(Tracks Missing/Uploaded Docs)
+        DocVerification: 🔍 Document Verification Agent\n(Evaluates Authenticity)
+        
+        Intake --> DocCollection
+        DocCollection --> DocVerification : Documents Uploaded
+        DocVerification --> DocCollection : Missing/Rejected Docs
+    }
+    
+    state "⏸️ HR Human-in-the-Loop" as HR_Review {
+        HRApproval: HR Command Center Approval\n(Review Exceptions & Approve)
+    }
+    
+    DocVerification --> HRApproval : All Docs Verified
+    
+    state "Phase 2: Post-Approval (HR & Verification)" as Phase2 {
+        BGV: 🛡️ BGV Coordination Agent\n(Initiates & Clears Background Check)
+        HRSetup: 👤 HR Setup Agent\n(Provisions HRIS Record)
+        
+        HRApproval --> BGV : HR Approves
+        BGV --> HRSetup : BGV Cleared
+    }
+    
+    state "⏸️ Candidate Input" as Candidate_Action {
+        BankDetails: Candidate Portal\n(Submit Bank & PAN Details)
+    }
+    
+    HRSetup --> BankDetails : Awaiting Input
+    
+    state "Phase 3: Provisioning & Readiness" as Phase3 {
+        Payroll: 💰 Payroll Setup Agent\n(Calculates CTC & Generates Payslip PDF)
+        ITProv: 💻 IT Provisioning Agent\n(Allocates Hardware & Software Access)
+        Readiness: 📊 Readiness Scorer\n(Finalizes 100% Day-1 Readiness)
+        
+        BankDetails --> Payroll : Details Submitted
+        Payroll --> ITProv
+        ITProv --> Readiness
+    }
+    
+    Readiness --> [*] : 🎉 Onboarding Complete
+    
+    note right of Phase1 : Supported 24/7 by\n🤖 Query Assistant Agent (RAG)
+```
+
+---
+
 ## 🛠️ Tech Stack
 
 * **Backend Framework**: Python 3.10+, FastAPI, Uvicorn
